@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Environment variables (secrets)
+.env
+.env.local
+.env*.local
+
+# Frontend folder (sirf backend push karna hai)
+CalorieApp/
+
+# Build/Dist files
+dist/
+build/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Expo (agar use kar rahe ho)
+.expo/
+.expo-shared/
