@@ -7,12 +7,11 @@ const authRoutes = require('./routes/auth');
 const scanRoutes = require('./routes/scans');
 const articlesRouter = require('./routes/articles');
 const aiRouter = require('./routes/ai');
-const streakRouter = require('./routes/streak');  // ✅ NEW
-const waterRouter = require('./routes/water');    // ✅ NEW
+const streakRouter = require('./routes/streak');
+const waterRouter = require('./routes/water');
 
 const app = express();
 
-// ✅ CORS Configuration - Mobile Expo + Web dono ke liye
 const allowedOrigins = [
   'https://alviva-server-main.onrender.com',
   'http://localhost:3000',
@@ -42,28 +41,24 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
-// Debug middleware
 app.use((req, res, next) => {
   console.log(`📍 ${req.method} ${req.url} | Origin: ${req.headers.origin || 'none'}`);
   next();
 });
 
-// ✅ Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
-// Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/scans', scanRoutes);
 app.use('/api/articles', articlesRouter);
 app.use('/api/goals', goalsRouter);
 app.use('/api/ai', aiRouter);
 app.use('/api/profile', profileRouter);
-app.use('/api/streak', streakRouter);    // ✅ NEW
-app.use('/api/water', waterRouter);      // ✅ NEW
+app.use('/api/streak', streakRouter);
+app.use('/api/water', waterRouter);
 
-// Test route
 app.get('/', (req, res) => {
   res.json({ 
     message: 'CalorieAI Backend Running! 🚀',
@@ -72,12 +67,10 @@ app.get('/', (req, res) => {
   });
 });
 
-// 404 handler
 app.use((req, res) => {
   res.status(404).json({ error: 'Route not found' });
 });
 
-// Error handler
 app.use((err, req, res, next) => {
   console.error('❌ Error:', err.message);
   res.status(500).json({ error: err.message || 'Internal server error' });
@@ -91,7 +84,6 @@ const server = app.listen(PORT, () => {
   console.log(`📦 Routes loaded: auth, scans, articles, goals, ai, profile, streak, water`);
 });
 
-// Graceful shutdown
 process.on('SIGTERM', () => {
   console.log('SIGTERM received, shutting down gracefully');
   server.close(() => {
