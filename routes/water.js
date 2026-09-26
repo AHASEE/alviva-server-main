@@ -112,4 +112,63 @@ router.post('/', verifyToken, async (req, res) => {
   }
 });
 
+// DELETE /api/water/latest - Remove the most recent water log for today
+router.delete('/latest', verifyToken, async (req, res) => {
+  try {
+    const { data: { user }, error: authError } = await supabase.auth.getUser(req.token);
+    if (authError || !user) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
+    const today = new Date().toISOString().split('T')[0];
+
+    // Find the most recent entry for today
+    const { data: latest, error: findError } = await supabase
+      .from('water_intake')
+      .select('id')
+      .eq('user_id', user.id)
+      .gte('added_at', `${today}T00:00:00`)
+      .lte('added_at', `${today}T23:59:59`)
+      .order('added_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (findError || !latest) {
+      return res.status(404).json({ success: false, error: 'No entries to remove' });
+    }
+
+    const { error: deleteError } = await supabase
+      .from('water_intake')
+      .delete()
+      .eq('id', latest.id);
+
+    if (deleteError) {
+      console.error('Water remove error:', deleteError);
+      return res.status(500).json({ success: false, error: deleteError.message });
+    }
+
+    // Get updated totals for today
+    const { data: todayData } = await supabase
+      .from('water_intake')
+      .select('cups')
+      .eq('user_id', user.id)
+      .gte('added_at', `${today}T00:00:00`)
+      .lte('added_at', `${today}T23:59:59`);
+
+    const totalCups = todayData?.reduce((sum, item) => sum + (item.cups || 0), 0) || 0;
+    const dailyGoal = 8;
+
+    res.json({
+      success: true,
+      message: 'Removed last water entry',
+      water: {
+        totalCups,
+        dailyGoal,
+        progress: Math.min((totalCups / dailyGoal) * 100, 100),
+      },
+    });
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 module.exports = router;
