@@ -1,68 +1,92 @@
-const rateLimit = require('express-rate-limit');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 
-// ✅ Global rate limiter - 100 requests per 15 minutes
+// Common JSON response
+const rateLimitHandler = (message) => (req, res) => {
+  res.status(429).json({
+    success: false,
+    error: message,
+  });
+};
+
+// 🌍 Global limiter
+// 100 requests per 15 minutes per IP
 const globalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
-  message: 'Too many requests from this IP, please try again later.',
-  standardHeaders: true, // Return rate limit info in `RateLimit-*` headers
-  legacyHeaders: false, // Disable `X-RateLimit-*` headers
-  skip: (req) => {
-    // Skip rate limiting for health check
-    return req.path === '/health';
-  },
+  windowMs: 15 * 60 * 1000,
+  limit: 100,
+
+  standardHeaders: true,
+  legacyHeaders: false,
+
+  skip: (req) => req.path === '/health',
+
+  handler: rateLimitHandler(
+    'Too many requests. Please try again later.'
+  ),
 });
 
-// ✅ Strict limiter - 5 requests per 15 minutes (Login/Signup)
+// 🔐 Login / Register limiter
+// 5 attempts per 15 minutes
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // Limit to 5 attempts
-  message: 'Too many login attempts, please try again after 15 minutes.',
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+
   standardHeaders: true,
   legacyHeaders: false,
+
   keyGenerator: (req) => {
-    // Rate limit by email instead of IP (more effective for login)
-    return req.body?.email || req.ip;
+    const email = req.body?.email;
+
+    if (typeof email === 'string' && email.trim()) {
+      return `email:${email.trim().toLowerCase()}`;
+    }
+
+    return `ip:${ipKeyGenerator(req.ip)}`;
   },
-  skip: (req) => {
-    // Don't rate limit if email is not provided
-    return !req.body?.email;
-  },
+
+  handler: rateLimitHandler(
+    'Too many login or signup attempts. Please try again after 15 minutes.'
+  ),
 });
 
-// ✅ Moderate limiter - 20 requests per 15 minutes (AI endpoints)
+// 🤖 AI limiter
+// Protects Groq / USDA usage
 const aiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 20, // Limit to 20 requests
-  message: 'Too many AI requests, please try again later.',
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+
   standardHeaders: true,
   legacyHeaders: false,
-  skip: (req) => {
-    // Skip if no auth token
-    return !req.headers.authorization;
-  },
+
+  handler: rateLimitHandler(
+    'Too many AI requests. Please try again later.'
+  ),
 });
 
-// ✅ Scan limiter - 30 requests per hour (Food scanning)
+// 📷 Food scan limiter
+// 30 scan-related requests per hour
 const scanLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
-  max: 30, // Limit to 30 scans per hour
-  message: 'Too many scans, please try again later.',
+  windowMs: 60 * 60 * 1000,
+  limit: 30,
+
   standardHeaders: true,
   legacyHeaders: false,
-  skip: (req) => {
-    // Skip if no auth token
-    return !req.headers.authorization;
-  },
+
+  handler: rateLimitHandler(
+    'Too many food scan requests. Please try again later.'
+  ),
 });
 
-// ✅ API limiter - 50 requests per 15 minutes (General API)
+// 📦 General API limiter
 const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 50,
-  message: 'Too many requests, please try again later.',
+  windowMs: 15 * 60 * 1000,
+  limit: 50,
+
   standardHeaders: true,
   legacyHeaders: false,
+
+  handler: rateLimitHandler(
+    'Too many API requests. Please try again later.'
+  ),
 });
 
 module.exports = {
