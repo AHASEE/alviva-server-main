@@ -89,11 +89,12 @@ app.use(
       'OPTIONS',
     ],
 
-    allowedHeaders: [
-      'Content-Type',
-      'Authorization',
-      'Accept',
-    ],
+   allowedHeaders: [
+  'Content-Type',
+  'Authorization',
+  'Accept',
+  'X-Timezone',
+],
 
     optionsSuccessStatus: 204,
   })
