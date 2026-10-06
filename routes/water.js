@@ -1,174 +1,436 @@
 const express = require('express');
 const { createClient } = require('@supabase/supabase-js');
+
+const verifyToken = require('./middleware/verifyToken');
+
+const {
+  getTimezone,
+  getUtcDayRange,
+} = require('./utils/timezone');
+
 const router = express.Router();
 
-// Initialize Supabase
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_KEY
 );
 
-// Middleware to verify token
-const verifyToken = (req, res, next) => {
-  const token = req.headers.authorization?.split(' ')[1];
-  if (!token) return res.status(401).json({ success: false, error: 'No token' });
-  req.token = token;
-  next();
+const DAILY_GOAL = 8;
+
+// ─────────────────────────────────────
+// Helper
+// ─────────────────────────────────────
+
+const buildWaterStats = (logs = []) => {
+  const totalCups = logs.reduce(
+    (sum, item) =>
+      sum + (Number(item.cups) || 0),
+    0
+  );
+
+  return {
+    totalCups:
+      Math.round(totalCups * 10) / 10,
+
+    dailyGoal: DAILY_GOAL,
+
+    progress: Math.min(
+      Math.round(
+        (totalCups / DAILY_GOAL) * 100
+      ),
+      100
+    ),
+  };
 };
 
-// GET /api/water - Get today's water intake
-router.get('/', verifyToken, async (req, res) => {
-  try {
-    const { data: { user }, error: authError } = await supabase.auth.getUser(req.token);
-    if (authError || !user) return res.status(401).json({ success: false, error: 'Unauthorized' });
+// ─────────────────────────────────────
+// GET /api/water
+// Today's water intake
+// ─────────────────────────────────────
 
-    const today = new Date().toISOString().split('T')[0];
+router.get(
+  '/',
+  verifyToken,
+  async (req, res) => {
+    try {
+      const timezone =
+        getTimezone(req);
 
-    // Get water intake for today
-    const { data, error } = await supabase
-      .from('water_intake')
-      .select('id, cups, added_at')
-      .eq('user_id', user.id)
-      .gte('added_at', `${today}T00:00:00`)
-      .lte('added_at', `${today}T23:59:59`)
-      .order('added_at', { ascending: true });
+      const {
+        start,
+        end,
+      } = getUtcDayRange(
+        timezone
+      );
 
-    if (error) {
-      console.error('Water fetch error:', error);
-      return res.status(500).json({ success: false, error: error.message });
-    }
-
-    const totalCups = data?.reduce((sum, item) => sum + (item.cups || 0), 0) || 0;
-    const dailyGoal = 8; // 8 cups per day
-
-    res.json({
-      success: true,
-      water: {
-        totalCups,
-        dailyGoal,
-        progress: Math.min((totalCups / dailyGoal) * 100, 100),
-        logs: data || [],
-      },
-    });
-  } catch (error) {
-    console.error('Error:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// POST /api/water - Add water intake
-router.post('/', verifyToken, async (req, res) => {
-  try {
-    const { cups = 1 } = req.body;
-
-    if (!cups || cups < 0.5 || cups > 10) {
-      return res.status(400).json({ success: false, error: 'Cups must be between 0.5 and 10' });
-    }
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser(req.token);
-    if (authError || !user) return res.status(401).json({ success: false, error: 'Unauthorized' });
-
-    // Insert water intake record
-    const { data, error } = await supabase
-      .from('water_intake')
-      .insert([
-        {
-          user_id: user.id,
+      const {
+        data,
+        error,
+      } = await supabase
+        .from('water_intake')
+        .select(
+          `
+          id,
           cups,
-          added_at: new Date().toISOString(),
+          added_at
+          `
+        )
+        .eq(
+          'user_id',
+          req.user.id
+        )
+        .gte(
+          'added_at',
+          start
+        )
+        .lt(
+          'added_at',
+          end
+        )
+        .order(
+          'added_at',
+          {
+            ascending: true,
+          }
+        );
+
+      if (error) {
+        console.error(
+          'Water fetch error:',
+          error.message
+        );
+
+        return res.status(500).json({
+          success: false,
+          error:
+            'Unable to load water intake',
+        });
+      }
+
+      const logs =
+        Array.isArray(data)
+          ? data
+          : [];
+
+      return res.json({
+        success: true,
+
+        timezone,
+
+        water: {
+          ...buildWaterStats(
+            logs
+          ),
+
+          logs,
         },
-      ])
-      .select();
+      });
+    } catch (error) {
+      console.error(
+        'Water fetch error:',
+        error.message
+      );
 
-    if (error) {
-      console.error('Water add error:', error);
-      return res.status(500).json({ success: false, error: error.message });
+      return res.status(500).json({
+        success: false,
+        error:
+          'Unable to load water intake',
+      });
     }
-
-    // Get updated totals for today
-    const today = new Date().toISOString().split('T')[0];
-    const { data: todayData } = await supabase
-      .from('water_intake')
-      .select('cups')
-      .eq('user_id', user.id)
-      .gte('added_at', `${today}T00:00:00`)
-      .lte('added_at', `${today}T23:59:59`);
-
-    const totalCups = todayData?.reduce((sum, item) => sum + (item.cups || 0), 0) || 0;
-    const dailyGoal = 8;
-
-    res.json({
-      success: true,
-      message: `Added ${cups} cup${cups !== 1 ? 's' : ''} of water!`,
-      water: {
-        totalCups,
-        dailyGoal,
-        progress: Math.min((totalCups / dailyGoal) * 100, 100),
-      },
-    });
-  } catch (error) {
-    console.error('Error:', error);
-    res.status(500).json({ success: false, error: error.message });
   }
-});
+);
 
-// DELETE /api/water/latest - Remove the most recent water log for today
-router.delete('/latest', verifyToken, async (req, res) => {
-  try {
-    const { data: { user }, error: authError } = await supabase.auth.getUser(req.token);
-    if (authError || !user) return res.status(401).json({ success: false, error: 'Unauthorized' });
+// ─────────────────────────────────────
+// POST /api/water
+// Add water intake
+// ─────────────────────────────────────
 
-    const today = new Date().toISOString().split('T')[0];
+router.post(
+  '/',
+  verifyToken,
+  async (req, res) => {
+    try {
+      const timezone =
+        getTimezone(req);
 
-    // Find the most recent entry for today
-    const { data: latest, error: findError } = await supabase
-      .from('water_intake')
-      .select('id')
-      .eq('user_id', user.id)
-      .gte('added_at', `${today}T00:00:00`)
-      .lte('added_at', `${today}T23:59:59`)
-      .order('added_at', { ascending: false })
-      .limit(1)
-      .single();
+      const cups =
+        req.body?.cups === undefined
+          ? 1
+          : Number(
+              req.body.cups
+            );
 
-    if (findError || !latest) {
-      return res.status(404).json({ success: false, error: 'No entries to remove' });
+      if (
+        !Number.isFinite(cups) ||
+        cups < 0.5 ||
+        cups > 10
+      ) {
+        return res.status(400).json({
+          success: false,
+          error:
+            'Cups must be between 0.5 and 10',
+        });
+      }
+
+      const {
+        data: inserted,
+        error: insertError,
+      } = await supabase
+        .from('water_intake')
+        .insert({
+          user_id:
+            req.user.id,
+
+          cups,
+
+          added_at:
+            new Date()
+              .toISOString(),
+        })
+        .select(
+          `
+          id,
+          cups,
+          added_at
+          `
+        )
+        .single();
+
+      if (insertError) {
+        console.error(
+          'Water insert error:',
+          insertError.message
+        );
+
+        return res.status(500).json({
+          success: false,
+          error:
+            'Unable to add water intake',
+        });
+      }
+
+      const {
+        start,
+        end,
+      } = getUtcDayRange(
+        timezone
+      );
+
+      const {
+        data: todayData,
+        error: totalsError,
+      } = await supabase
+        .from('water_intake')
+        .select(
+          'cups'
+        )
+        .eq(
+          'user_id',
+          req.user.id
+        )
+        .gte(
+          'added_at',
+          start
+        )
+        .lt(
+          'added_at',
+          end
+        );
+
+      if (totalsError) {
+        console.error(
+          'Water totals error:',
+          totalsError.message
+        );
+      }
+
+      const stats =
+        buildWaterStats(
+          todayData || []
+        );
+
+      return res.status(201).json({
+        success: true,
+
+        message:
+          'Water intake added successfully',
+
+        timezone,
+
+        entry: inserted,
+
+        water: stats,
+      });
+    } catch (error) {
+      console.error(
+        'Water add error:',
+        error.message
+      );
+
+      return res.status(500).json({
+        success: false,
+        error:
+          'Unable to add water intake',
+      });
     }
-
-    const { error: deleteError } = await supabase
-      .from('water_intake')
-      .delete()
-      .eq('id', latest.id);
-
-    if (deleteError) {
-      console.error('Water remove error:', deleteError);
-      return res.status(500).json({ success: false, error: deleteError.message });
-    }
-
-    // Get updated totals for today
-    const { data: todayData } = await supabase
-      .from('water_intake')
-      .select('cups')
-      .eq('user_id', user.id)
-      .gte('added_at', `${today}T00:00:00`)
-      .lte('added_at', `${today}T23:59:59`);
-
-    const totalCups = todayData?.reduce((sum, item) => sum + (item.cups || 0), 0) || 0;
-    const dailyGoal = 8;
-
-    res.json({
-      success: true,
-      message: 'Removed last water entry',
-      water: {
-        totalCups,
-        dailyGoal,
-        progress: Math.min((totalCups / dailyGoal) * 100, 100),
-      },
-    });
-  } catch (error) {
-    console.error('Error:', error);
-    res.status(500).json({ success: false, error: error.message });
   }
-});
+);
+
+// ─────────────────────────────────────
+// DELETE /api/water/latest
+// Delete latest entry for local day
+// ─────────────────────────────────────
+
+router.delete(
+  '/latest',
+  verifyToken,
+  async (req, res) => {
+    try {
+      const timezone =
+        getTimezone(req);
+
+      const {
+        start,
+        end,
+      } = getUtcDayRange(
+        timezone
+      );
+
+      const {
+        data: latest,
+        error: findError,
+      } = await supabase
+        .from('water_intake')
+        .select(
+          `
+          id,
+          cups,
+          added_at
+          `
+        )
+        .eq(
+          'user_id',
+          req.user.id
+        )
+        .gte(
+          'added_at',
+          start
+        )
+        .lt(
+          'added_at',
+          end
+        )
+        .order(
+          'added_at',
+          {
+            ascending: false,
+          }
+        )
+        .limit(1)
+        .maybeSingle();
+
+      if (findError) {
+        console.error(
+          'Water latest error:',
+          findError.message
+        );
+
+        return res.status(500).json({
+          success: false,
+          error:
+            'Unable to remove water entry',
+        });
+      }
+
+      if (!latest) {
+        return res.status(404).json({
+          success: false,
+          error:
+            'No water entry to remove',
+        });
+      }
+
+      const {
+        error: deleteError,
+      } = await supabase
+        .from('water_intake')
+        .delete()
+        .eq(
+          'id',
+          latest.id
+        )
+        .eq(
+          'user_id',
+          req.user.id
+        );
+
+      if (deleteError) {
+        console.error(
+          'Water delete error:',
+          deleteError.message
+        );
+
+        return res.status(500).json({
+          success: false,
+          error:
+            'Unable to remove water entry',
+        });
+      }
+
+      const {
+        data: remaining,
+        error: totalsError,
+      } = await supabase
+        .from('water_intake')
+        .select(
+          'cups'
+        )
+        .eq(
+          'user_id',
+          req.user.id
+        )
+        .gte(
+          'added_at',
+          start
+        )
+        .lt(
+          'added_at',
+          end
+        );
+
+      if (totalsError) {
+        console.error(
+          'Water totals error:',
+          totalsError.message
+        );
+      }
+
+      return res.json({
+        success: true,
+
+        message:
+          'Last water entry removed',
+
+        timezone,
+
+        water:
+          buildWaterStats(
+            remaining || []
+          ),
+      });
+    } catch (error) {
+      console.error(
+        'Water delete error:',
+        error.message
+      );
+
+      return res.status(500).json({
+        success: false,
+        error:
+          'Unable to remove water entry',
+      });
+    }
+  }
+);
 
 module.exports = router;
