@@ -3,6 +3,12 @@ const { createClient } = require('@supabase/supabase-js');
 
 const verifyToken = require('./middleware/verifyToken');
 
+const {
+  getTimezone,
+  getLocalDate,
+  getYesterdayLocalDate,
+} = require('./utils/timezone');
+
 const router = express.Router();
 
 const supabase = createClient(
@@ -13,22 +19,6 @@ const supabase = createClient(
 // ─────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────
-
-const getToday = () => {
-  return new Date().toISOString().split('T')[0];
-};
-
-const getYesterday = () => {
-  const date = new Date();
-
-  date.setUTCDate(
-    date.getUTCDate() - 1
-  );
-
-  return date
-    .toISOString()
-    .split('T')[0];
-};
 
 const normalizeDate = (value) => {
   if (!value) {
@@ -42,8 +32,7 @@ const getMilestone = (streak) => {
   if (streak === 7) {
     return {
       badge: '🥉',
-      message:
-        "7 Day Streak! You're on fire! 🔥",
+      message: "7 Day Streak! You're on fire! 🔥",
     };
   }
 
@@ -75,6 +64,12 @@ router.get(
   verifyToken,
   async (req, res) => {
     try {
+      const timezone =
+        getTimezone(req);
+
+      const today =
+        getLocalDate(timezone);
+
       const {
         data,
         error,
@@ -106,8 +101,6 @@ router.get(
         });
       }
 
-      const today = getToday();
-
       const lastScanDate =
         normalizeDate(
           data?.last_scan_date
@@ -131,6 +124,8 @@ router.get(
 
       return res.json({
         success: true,
+
+        timezone,
 
         streak: {
           current,
@@ -164,9 +159,16 @@ router.post(
   verifyToken,
   async (req, res) => {
     try {
-      const today = getToday();
+      const timezone =
+        getTimezone(req);
+
+      const today =
+        getLocalDate(timezone);
+
       const yesterday =
-        getYesterday();
+        getYesterdayLocalDate(
+          timezone
+        );
 
       const {
         data: profile,
@@ -227,6 +229,8 @@ router.post(
         return res.json({
           success: true,
 
+          timezone,
+
           streak: {
             current:
               currentStreak,
@@ -241,12 +245,13 @@ router.post(
         });
       }
 
-      // Continue or restart streak
+      // Continue streak
       if (
         lastScanDate === yesterday
       ) {
         currentStreak += 1;
       } else {
+        // First day or broken streak
         currentStreak = 1;
       }
 
@@ -309,6 +314,8 @@ router.post(
 
       return res.json({
         success: true,
+
+        timezone,
 
         streak: {
           current:
