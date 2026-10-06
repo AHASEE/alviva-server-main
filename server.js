@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
+
 const goalsRouter = require('./routes/goals');
 const profileRouter = require('./routes/profile');
 const authRoutes = require('./routes/auth');
@@ -10,45 +11,142 @@ const aiRouter = require('./routes/ai');
 const streakRouter = require('./routes/streak');
 const waterRouter = require('./routes/water');
 
+const {
+  globalLimiter,
+} = require('./routes/middleware/rateLimit');
+
 const app = express();
 
+// Render / reverse proxy support
+app.set('trust proxy', 1);
+
+// Hide Express fingerprint
+app.disable('x-powered-by');
+
+// ─────────────────────────────────────
+// Required environment variables
+// ─────────────────────────────────────
+
+const requiredEnv = [
+  'SUPABASE_URL',
+  'SUPABASE_ANON_KEY',
+  'SUPABASE_SERVICE_KEY',
+];
+
+for (const key of requiredEnv) {
+  if (!process.env[key]) {
+    console.error(`❌ Missing environment variable: ${key}`);
+    process.exit(1);
+  }
+}
+
+// ─────────────────────────────────────
+// CORS
+// ─────────────────────────────────────
+
 const allowedOrigins = [
-  'https://alviva-server-main.onrender.com',
+  'https://alviva.app',
+  'https://www.alviva.app',
+  'https://alviva-web.vercel.app',
+
+  // Local development
   'http://localhost:3000',
   'http://localhost:5173',
   'http://localhost:8081',
   'http://127.0.0.1:3000',
   'http://127.0.0.1:5173',
   'http://127.0.0.1:8081',
-  'https://alviva-web.vercel.app',
 ];
 
-app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      console.log('❌ Blocked origin:', origin);
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
-  optionsSuccessStatus: 200,
-}));
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Mobile apps / Postman may send no Origin header
+      if (!origin) {
+        return callback(null, true);
+      }
 
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ limit: '10mb', extended: true }));
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      console.warn('Blocked CORS origin:', origin);
+
+      const error = new Error('Not allowed by CORS');
+      error.status = 403;
+
+      return callback(error);
+    },
+
+    credentials: true,
+
+    methods: [
+      'GET',
+      'POST',
+      'PUT',
+      'PATCH',
+      'DELETE',
+      'OPTIONS',
+    ],
+
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'Accept',
+    ],
+
+    optionsSuccessStatus: 204,
+  })
+);
+
+// ─────────────────────────────────────
+// Body parsing
+// ─────────────────────────────────────
+
+// AI image Base64 requests need a larger JSON limit
+app.use(
+  express.json({
+    limit: '10mb',
+  })
+);
+
+// Forms do not need 10MB
+app.use(
+  express.urlencoded({
+    extended: true,
+    limit: '1mb',
+  })
+);
+
+// ─────────────────────────────────────
+// Health check
+// ─────────────────────────────────────
+
+app.get('/health', (req, res) => {
+  return res.status(200).json({
+    status: 'OK',
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// ─────────────────────────────────────
+// Global rate limit
+// ─────────────────────────────────────
+
+app.use(globalLimiter);
+
+// ─────────────────────────────────────
+// Request logging
+// ─────────────────────────────────────
 
 app.use((req, res, next) => {
-  console.log(`📍 ${req.method} ${req.url} | Origin: ${req.headers.origin || 'none'}`);
+  console.log(`${req.method} ${req.path}`);
   next();
 });
 
-app.get('/health', (req, res) => {
-  res.json({ status: 'OK', timestamp: new Date().toISOString() });
-});
+// ─────────────────────────────────────
+// API routes
+// ─────────────────────────────────────
 
 app.use('/api/auth', authRoutes);
 app.use('/api/scans', scanRoutes);
@@ -59,33 +157,72 @@ app.use('/api/profile', profileRouter);
 app.use('/api/streak', streakRouter);
 app.use('/api/water', waterRouter);
 
+// ─────────────────────────────────────
+// Root
+// ─────────────────────────────────────
+
 app.get('/', (req, res) => {
-  res.json({ 
-    message: 'CalorieAI Backend Running! 🚀',
-    environment: process.env.NODE_ENV || 'development',
-    timestamp: new Date().toISOString(),
+  return res.json({
+    success: true,
+    message: 'Alviva API is running',
   });
 });
 
+// ─────────────────────────────────────
+// 404
+// ─────────────────────────────────────
+
 app.use((req, res) => {
-  res.status(404).json({ error: 'Route not found' });
+  return res.status(404).json({
+    success: false,
+    error: 'Route not found',
+  });
 });
+
+// ─────────────────────────────────────
+// Global error handler
+// ─────────────────────────────────────
 
 app.use((err, req, res, next) => {
-  console.error('❌ Error:', err.message);
-  res.status(500).json({ error: err.message || 'Internal server error' });
+  console.error('Server error:', err.message);
+
+  const status =
+    Number.isInteger(err.status) &&
+    err.status >= 400 &&
+    err.status < 600
+      ? err.status
+      : 500;
+
+  if (status === 403) {
+    return res.status(403).json({
+      success: false,
+      error: 'Request origin is not allowed',
+    });
+  }
+
+  return res.status(status).json({
+    success: false,
+    error:
+      status === 500
+        ? 'Internal server error'
+        : err.message,
+  });
 });
+
+// ─────────────────────────────────────
+// Server
+// ─────────────────────────────────────
 
 const PORT = process.env.PORT || 3000;
+
 const server = app.listen(PORT, () => {
-  console.log(`✅ Server running on port ${PORT}`);
-  console.log(`📍 URL: http://localhost:${PORT}`);
-  console.log(`🌐 CORS Enabled for: ${allowedOrigins.join(', ')}`);
-  console.log(`📦 Routes loaded: auth, scans, articles, goals, ai, profile, streak, water`);
+  console.log(`✅ Alviva API running on port ${PORT}`);
 });
 
+// Graceful shutdown
 process.on('SIGTERM', () => {
-  console.log('SIGTERM received, shutting down gracefully');
+  console.log('SIGTERM received. Shutting down...');
+
   server.close(() => {
     console.log('Server closed');
     process.exit(0);
