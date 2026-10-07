@@ -4,6 +4,11 @@ const { createClient } = require('@supabase/supabase-js');
 const verifyToken = require('./middleware/verifyToken');
 const { scanLimiter } = require('./middleware/rateLimit');
 
+const {
+  getTimezone,
+  getUtcDayRange,
+} = require('./utils/timezone');
+
 const router = express.Router();
 
 const supabase = createClient(
@@ -164,10 +169,15 @@ router.get(
   verifyToken,
   async (req, res) => {
     try {
-      const today =
-        new Date()
-          .toISOString()
-          .split('T')[0];
+      const timezone =
+        getTimezone(req);
+
+      const {
+        start,
+        end,
+      } = getUtcDayRange(
+        timezone
+      );
 
       const { data, error } =
         await supabase
@@ -191,11 +201,11 @@ router.get(
           )
           .gte(
             'scanned_at',
-            `${today}T00:00:00`
+            start
           )
-          .lte(
+          .lt(
             'scanned_at',
-            `${today}T23:59:59.999`
+            end
           )
           .order(
             'scanned_at',
@@ -232,6 +242,7 @@ router.get(
 
       return res.json({
         success: true,
+        timezone,
         scans,
         totalCalories:
           Math.round(totalCalories),
