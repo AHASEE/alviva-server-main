@@ -1,10 +1,19 @@
 const express = require('express');
 const { createClient } = require('@supabase/supabase-js');
 
-const { authLimiter } = require('./middleware/rateLimit');
+const {
+  authLimiter,
+  apiLimiter,
+} = require('./middleware/rateLimit');
 const verifyToken = require('./middleware/verifyToken');
 
 const router = express.Router();
+
+// Auth responses should never be cached
+router.use((req, res, next) => {
+  res.set('Cache-Control', 'no-store');
+  next();
+});
 
 // Public/auth client
 const supabase = createClient(
@@ -262,6 +271,12 @@ router.post(
         token:
           data.session.access_token,
 
+        refreshToken:
+          data.session.refresh_token,
+
+        expiresIn:
+          data.session.expires_in,
+
         user: {
           id:
             data.user.id,
@@ -286,6 +301,105 @@ router.post(
         success: false,
         error:
           'Unable to login',
+      });
+    }
+  }
+);
+
+// ─────────────────────────────────────
+// POST /api/auth/refresh
+// Rotate access + refresh token
+// ─────────────────────────────────────
+
+router.post(
+  '/refresh',
+  apiLimiter,
+  async (req, res) => {
+    try {
+      const {
+        refreshToken,
+      } = req.body;
+
+      if (
+        typeof refreshToken !== 'string' ||
+        refreshToken.length < 20 ||
+        refreshToken.length > 4096
+      ) {
+        return res.status(400).json({
+          success: false,
+          error:
+            'Valid refresh token is required',
+        });
+      }
+
+      const {
+        data,
+        error,
+      } =
+        await supabase.auth
+          .refreshSession({
+            refresh_token:
+              refreshToken,
+          });
+
+      if (
+        error ||
+        !data?.session ||
+        !data?.user
+      ) {
+        if (error) {
+          console.error(
+            'Refresh token error:',
+            error.message
+          );
+        }
+
+        return res.status(401).json({
+          success: false,
+          error:
+            'Session has expired. Please log in again.',
+        });
+      }
+
+      return res.json({
+        success: true,
+
+        token:
+          data.session
+            .access_token,
+
+        refreshToken:
+          data.session
+            .refresh_token,
+
+        expiresIn:
+          data.session
+            .expires_in,
+
+        user: {
+          id:
+            data.user.id,
+
+          email:
+            data.user.email,
+
+          name:
+            data.user
+              .user_metadata
+              ?.name ||
+            null,
+        },
+      });
+    } catch (error) {
+      console.error(
+        'Refresh session error:',
+        error.message
+      );
+
+      return res.status(500).json({
+        success: false,
+        error:
+          'Unable to refresh session',
       });
     }
   }
