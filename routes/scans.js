@@ -23,8 +23,8 @@ const supabase = createClient(
 
 router.post(
   '/',
-  scanLimiter,
   verifyToken,
+  scanLimiter,
   async (req, res) => {
     try {
       const {
