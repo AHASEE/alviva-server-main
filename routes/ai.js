@@ -22,8 +22,8 @@ const MAX_IMAGE_LENGTH = 8_000_000;
 // ─────────────────────────────────────────────
 router.post(
   '/identify',
-  aiLimiter,
   verifyToken,
+  aiLimiter,
   async (req, res) => {
     try {
       if (!GROQ_API_KEY) {
@@ -120,10 +120,6 @@ router.post(
         });
       }
 
-      console.log(
-        `✅ Food identified for user ${req.user.id}: ${foodName}`
-      );
-
       return res.json({
         success: true,
         foodName,
@@ -147,8 +143,8 @@ router.post(
 // ─────────────────────────────────────────────
 router.post(
   '/nutrition',
-  aiLimiter,
   verifyToken,
+  aiLimiter,
   async (req, res) => {
     try {
       const { foodName } = req.body;
