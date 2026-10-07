@@ -57,6 +57,14 @@ const aiLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 
+  keyGenerator: (req) => {
+    if (req.user?.id) {
+      return `user:${req.user.id}`;
+    }
+
+    return `ip:${ipKeyGenerator(req.ip)}`;
+  },
+
   handler: rateLimitHandler(
     'Too many AI requests. Please try again later.'
   ),
@@ -70,6 +78,14 @@ const scanLimiter = rateLimit({
 
   standardHeaders: true,
   legacyHeaders: false,
+
+  keyGenerator: (req) => {
+    if (req.user?.id) {
+      return `user:${req.user.id}`;
+    }
+
+    return `ip:${ipKeyGenerator(req.ip)}`;
+  },
 
   handler: rateLimitHandler(
     'Too many food scan requests. Please try again later.'
