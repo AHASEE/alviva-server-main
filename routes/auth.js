@@ -123,12 +123,17 @@ router.post(
         error: profileError,
       } = await supabaseAdmin
         .from('profiles')
-        .insert({
-          id: data.user.id,
-          name: name.trim(),
-          email: cleanEmail,
-          daily_goal: 2000,
-        });
+        .upsert(
+          {
+            id: data.user.id,
+            name: name.trim(),
+            email: cleanEmail,
+            daily_goal: 2000,
+          },
+          {
+            onConflict: 'id',
+          }
+        );
 
       if (profileError) {
         console.error(
