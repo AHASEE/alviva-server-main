@@ -2,6 +2,25 @@ const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
 
+// ─────────────────────────────────────
+// Required environment variables
+// Validate before importing route files,
+// because route modules create Supabase clients.
+// ─────────────────────────────────────
+
+const requiredEnv = [
+  'SUPABASE_URL',
+  'SUPABASE_ANON_KEY',
+  'SUPABASE_SERVICE_KEY',
+];
+
+for (const key of requiredEnv) {
+  if (!process.env[key]) {
+    console.error(`❌ Missing environment variable: ${key}`);
+    process.exit(1);
+  }
+}
+
 const goalsRouter = require('./routes/goals');
 const profileRouter = require('./routes/profile');
 const authRoutes = require('./routes/auth');
@@ -22,23 +41,6 @@ app.set('trust proxy', 1);
 
 // Hide Express fingerprint
 app.disable('x-powered-by');
-
-// ─────────────────────────────────────
-// Required environment variables
-// ─────────────────────────────────────
-
-const requiredEnv = [
-  'SUPABASE_URL',
-  'SUPABASE_ANON_KEY',
-  'SUPABASE_SERVICE_KEY',
-];
-
-for (const key of requiredEnv) {
-  if (!process.env[key]) {
-    console.error(`❌ Missing environment variable: ${key}`);
-    process.exit(1);
-  }
-}
 
 // ─────────────────────────────────────
 // CORS
