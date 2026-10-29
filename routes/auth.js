@@ -421,17 +421,17 @@ router.delete(
   verifyToken,
   async (req, res) => {
     try {
-      const { password } =
-        req.body;
+      const {
+        password,
+        confirm,
+      } = req.body || {};
 
-      if (
-        typeof password !== 'string' ||
-        !password
-      ) {
+      if (confirm !== 'DELETE') {
         return res.status(400).json({
           success: false,
+          code: 'DELETE_CONFIRMATION_REQUIRED',
           error:
-            'Password is required to delete your account',
+            'Type DELETE to confirm account deletion',
         });
       }
 
@@ -446,22 +446,53 @@ router.delete(
         });
       }
 
-      // Re-authenticate before destructive action
-      const {
-        error: loginError,
-      } =
-        await supabase.auth
-          .signInWithPassword({
-            email,
-            password,
-          });
+      const providers =
+        Array.isArray(
+          req.user?.app_metadata?.providers
+        )
+          ? req.user.app_metadata.providers
+          : [
+              req.user?.app_metadata?.provider,
+            ].filter(Boolean);
 
-      if (loginError) {
-        return res.status(401).json({
-          success: false,
-          error:
-            'Incorrect password',
-        });
+      const requiresPassword =
+        providers.includes('email');
+
+      // Password accounts must re-authenticate.
+      // OAuth-only accounts already proved identity
+      // with the valid Supabase access token above.
+      if (requiresPassword) {
+        if (
+          typeof password !== 'string' ||
+          !password
+        ) {
+          return res.status(400).json({
+            success: false,
+            code: 'PASSWORD_REQUIRED',
+            requiresPassword: true,
+            error:
+              'Password is required to delete this account',
+          });
+        }
+
+        const {
+          error: loginError,
+        } =
+          await supabase.auth
+            .signInWithPassword({
+              email,
+              password,
+            });
+
+        if (loginError) {
+          return res.status(401).json({
+            success: false,
+            code: 'INCORRECT_PASSWORD',
+            requiresPassword: true,
+            error:
+              'Incorrect password',
+          });
+        }
       }
 
       const userId =
