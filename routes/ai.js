@@ -3,6 +3,8 @@ const { createClient } = require('@supabase/supabase-js');
 
 const verifyToken = require('./middleware/verifyToken');
 const { aiLimiter } = require('./middleware/rateLimit');
+const { getTimezone } = require('./utils/timezone');
+const { getDailyScanUsage } = require('./utils/scanQuota');
 
 const router = express.Router();
 
@@ -63,6 +65,26 @@ router.post(
   aiLimiter,
   async (req, res) => {
     try {
+      const timezone =
+        getTimezone(req);
+
+      const quota =
+        await getDailyScanUsage(
+          supabase,
+          req.user.id,
+          timezone
+        );
+
+      if (quota.remaining <= 0) {
+        return res.status(429).json({
+          success: false,
+          code: 'DAILY_SCAN_LIMIT_REACHED',
+          error:
+            'You have used all 5 free scans for today. Your free scan allowance resets tomorrow.',
+          quota,
+        });
+      }
+
       if (!GROQ_API_KEY) {
         console.error('GROQ_API_KEY is missing');
 
@@ -160,6 +182,7 @@ router.post(
       return res.json({
         success: true,
         foodName,
+        quota,
       });
     } catch (error) {
       console.error(
