@@ -242,6 +242,21 @@ function getPersonalizedContent(bmi) {
 // Fetch News
 // ─────────────────────────────────────
 
+const RECENT_NEWS_DAYS = 21;
+
+function getRecentNewsCutoff() {
+  const cutoff = new Date(
+    Date.now() -
+      RECENT_NEWS_DAYS *
+        24 *
+        60 *
+        60 *
+        1000
+  );
+
+  return cutoff;
+}
+
 async function fetchNews(
   query,
   category = 'Health'
@@ -252,12 +267,21 @@ async function fetchNews(
     );
   }
 
+  const cutoff =
+    getRecentNewsCutoff();
+
+  const fromDate =
+    cutoff
+      .toISOString()
+      .slice(0, 10);
+
   const url =
     'https://newsapi.org/v2/everything' +
     `?q=${encodeURIComponent(query)}` +
     '&language=en' +
+    `&from=${fromDate}` +
     '&sortBy=publishedAt' +
-    '&pageSize=8';
+    '&pageSize=20';
 
   const data = await httpsGet(
     url,
@@ -277,9 +301,16 @@ async function fetchNews(
         article?.title &&
         article?.url &&
         article?.urlToImage &&
+        article?.publishedAt &&
+        new Date(article.publishedAt) >= cutoff &&
         !article.title.includes(
           '[Removed]'
         )
+    )
+    .sort(
+      (a, b) =>
+        new Date(b.publishedAt).getTime() -
+        new Date(a.publishedAt).getTime()
     )
     .slice(0, 8)
     .map(
