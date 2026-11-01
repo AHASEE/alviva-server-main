@@ -24,6 +24,89 @@ const CAT_QUERIES = {
   'For You': 'healthy nutrition fitness wellness',
 };
 
+const FALLBACK_ARTICLES = [
+  {
+    id: 'fallback_calories',
+    title: 'How Many Calories Should You Eat Per Day?',
+    description: 'A practical overview of daily calorie needs and the factors that can change them.',
+    url: 'https://www.healthline.com/nutrition/how-many-calories-per-day',
+    image: 'https://images.unsplash.com/photo-1490645935967-10de6ba17061?w=900',
+    source: 'Healthline',
+    publishedAt: '2026-01-01T00:00:00.000Z',
+    category: 'Nutrition',
+    readTime: '5 min',
+  },
+  {
+    id: 'fallback_protein',
+    title: 'Why Protein Matters for Health and Weight Management',
+    description: 'Learn why protein supports muscle, satiety and a balanced eating pattern.',
+    url: 'https://www.healthline.com/nutrition/10-reasons-to-eat-more-protein',
+    image: 'https://images.unsplash.com/photo-1547592180-85f173990554?w=900',
+    source: 'Healthline',
+    publishedAt: '2026-01-02T00:00:00.000Z',
+    category: 'Nutrition',
+    readTime: '6 min',
+  },
+  {
+    id: 'fallback_hiit',
+    title: 'Benefits of High-Intensity Interval Training',
+    description: 'A simple guide to HIIT and how short workouts can support fitness.',
+    url: 'https://www.healthline.com/nutrition/benefits-of-hiit',
+    image: 'https://images.unsplash.com/photo-1538805060514-97d9cc17730c?w=900',
+    source: 'Healthline',
+    publishedAt: '2026-01-03T00:00:00.000Z',
+    category: 'Fitness',
+    readTime: '5 min',
+  },
+  {
+    id: 'fallback_weight_loss',
+    title: 'Foods That Can Support Healthy Weight Loss',
+    description: 'Whole-food ideas that can fit into a balanced, sustainable weight-loss plan.',
+    url: 'https://www.healthline.com/nutrition/weight-loss-foods',
+    image: 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=900',
+    source: 'Healthline',
+    publishedAt: '2026-01-04T00:00:00.000Z',
+    category: 'Weight Loss',
+    readTime: '7 min',
+  },
+];
+
+const FALLBACK_VIDEOS = [
+  {
+    id: 'ml6cT4AZdqI',
+    videoId: 'ml6cT4AZdqI',
+    title: 'Full Body Workout for Beginners',
+    channel: 'FitnessBlender',
+    duration: '20 min',
+    views: 'Beginner',
+    thumb: 'https://img.youtube.com/vi/ml6cT4AZdqI/hqdefault.jpg',
+    url: 'https://www.youtube.com/watch?v=ml6cT4AZdqI',
+    category: 'Fitness',
+  },
+  {
+    id: 'cbKkB3POqaY',
+    videoId: 'cbKkB3POqaY',
+    title: '10 Minute Morning Yoga for Energy',
+    channel: 'Yoga With Adriene',
+    duration: '10 min',
+    views: 'Wellness',
+    thumb: 'https://img.youtube.com/vi/cbKkB3POqaY/hqdefault.jpg',
+    url: 'https://www.youtube.com/watch?v=cbKkB3POqaY',
+    category: 'Wellness',
+  },
+  {
+    id: 'UItWltVZZmE',
+    videoId: 'UItWltVZZmE',
+    title: 'Healthy Meal Plan Inspiration',
+    channel: 'Healthy Eating',
+    duration: 'Video',
+    views: 'Nutrition',
+    thumb: 'https://img.youtube.com/vi/UItWltVZZmE/hqdefault.jpg',
+    url: 'https://www.youtube.com/watch?v=UItWltVZZmE',
+    category: 'Nutrition',
+  },
+];
+
 // ─────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────
@@ -486,7 +569,12 @@ router.get(
 
       return res.json({
         success: true,
-        data: articles,
+        data:
+          Array.isArray(articles) && articles.length > 0
+            ? articles
+            : FALLBACK_ARTICLES,
+        fallback:
+          !Array.isArray(articles) || articles.length === 0,
       });
     } catch (error) {
       console.error(
@@ -494,10 +582,12 @@ router.get(
         error.message
       );
 
-      return res.status(502).json({
-        success: false,
+      return res.json({
+        success: true,
+        data: FALLBACK_ARTICLES,
+        fallback: true,
         message:
-          'Unable to load news right now',
+          'Showing curated health articles while live news is unavailable',
       });
     }
   }
@@ -532,7 +622,12 @@ router.get(
 
       return res.json({
         success: true,
-        data: videos,
+        data:
+          Array.isArray(videos) && videos.length > 0
+            ? videos
+            : FALLBACK_VIDEOS,
+        fallback:
+          !Array.isArray(videos) || videos.length === 0,
       });
     } catch (error) {
       console.error(
@@ -540,10 +635,12 @@ router.get(
         error.message
       );
 
-      return res.status(502).json({
-        success: false,
+      return res.json({
+        success: true,
+        data: FALLBACK_VIDEOS,
+        fallback: true,
         message:
-          'Unable to load videos right now',
+          'Showing curated videos while YouTube search is unavailable',
       });
     }
   }
