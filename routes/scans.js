@@ -34,23 +34,6 @@ router.post(
       const timezone =
         getTimezone(req);
 
-      const quotaBeforeSave =
-        await getDailyScanUsage(
-          supabase,
-          req.user.id,
-          timezone
-        );
-
-      if (quotaBeforeSave.remaining <= 0) {
-        return res.status(429).json({
-          success: false,
-          code: 'DAILY_SCAN_LIMIT_REACHED',
-          error:
-            'You have used all 5 free scans for today. Your free scan allowance resets tomorrow.',
-          quota: quotaBeforeSave,
-        });
-      }
-
       const {
         food_name,
         calories,
