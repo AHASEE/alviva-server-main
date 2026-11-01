@@ -200,85 +200,101 @@ router.put(
 
       // Age
       if (age !== undefined) {
-        const value = Number(age);
+        if (age === null || age === '') {
+          updates.age = null;
+        } else {
+          const value = Number(age);
 
-        if (
-          !Number.isInteger(value) ||
-          value < 13 ||
-          value > 120
-        ) {
-          return res.status(400).json({
-            success: false,
-            error:
-              'Age must be between 13 and 120',
-          });
+          if (
+            !Number.isInteger(value) ||
+            value < 13 ||
+            value > 120
+          ) {
+            return res.status(400).json({
+              success: false,
+              error:
+                'Age must be between 13 and 120',
+            });
+          }
+
+          updates.age = value;
         }
-
-        updates.age = value;
       }
 
       // Weight in kg
       if (weight !== undefined) {
-        const value = Number(weight);
+        if (weight === null || weight === '') {
+          updates.weight = null;
+        } else {
+          const value = Number(weight);
 
-        if (
-          !Number.isFinite(value) ||
-          value < 20 ||
-          value > 500
-        ) {
-          return res.status(400).json({
-            success: false,
-            error:
-              'Weight must be between 20 and 500 kg',
-          });
+          if (
+            !Number.isFinite(value) ||
+            value < 20 ||
+            value > 500
+          ) {
+            return res.status(400).json({
+              success: false,
+              error:
+                'Weight must be between 20 and 500 kg',
+            });
+          }
+
+          updates.weight = value;
         }
-
-        updates.weight = value;
       }
 
       // Height in cm
       if (height !== undefined) {
-        const value = Number(height);
+        if (height === null || height === '') {
+          updates.height = null;
+        } else {
+          const value = Number(height);
 
-        if (
-          !Number.isFinite(value) ||
-          value < 80 ||
-          value > 250
-        ) {
-          return res.status(400).json({
-            success: false,
-            error:
-              'Height must be between 80 and 250 cm',
-          });
+          if (
+            !Number.isFinite(value) ||
+            value < 80 ||
+            value > 250
+          ) {
+            return res.status(400).json({
+              success: false,
+              error:
+                'Height must be between 80 and 250 cm',
+            });
+          }
+
+          updates.height = value;
         }
-
-        updates.height = value;
       }
 
       // Gender
       if (gender !== undefined) {
-        const allowedGenders = [
-          'male',
-          'female',
-          'other',
-          'prefer_not_to_say',
-        ];
+        if (gender === null || gender === '') {
+          updates.gender = null;
+        } else {
+          const allowedGenders = [
+            'male',
+            'female',
+            'other',
+            'prefer_not_to_say',
+          ];
 
-        const value =
-          String(gender)
-            .trim()
-            .toLowerCase();
+          const value =
+            String(gender)
+              .trim()
+              .toLowerCase();
 
-        if (
-          !allowedGenders.includes(value)
-        ) {
-          return res.status(400).json({
-            success: false,
-            error: 'Invalid gender value',
-          });
+          if (
+            !allowedGenders.includes(value)
+          ) {
+            return res.status(400).json({
+              success: false,
+              error: 'Invalid gender value',
+            });
+          }
+
+          updates.gender = value;
         }
-
-        updates.gender = value;
       }
 
       // Activity level
