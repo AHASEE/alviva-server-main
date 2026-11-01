@@ -4,7 +4,10 @@ const { createClient } = require('@supabase/supabase-js');
 const verifyToken = require('./middleware/verifyToken');
 const { aiLimiter } = require('./middleware/rateLimit');
 const { getTimezone } = require('./utils/timezone');
-const { getDailyScanUsage } = require('./utils/scanQuota');
+const {
+  getDailyScanUsage,
+  consumeDailyScan,
+} = require('./utils/scanQuota');
 
 const router = express.Router();
 
@@ -179,10 +182,17 @@ router.post(
         });
       }
 
+      const updatedQuota =
+        await consumeDailyScan(
+          supabase,
+          req.user.id,
+          timezone
+        );
+
       return res.json({
         success: true,
         foodName,
-        quota,
+        quota: updatedQuota,
       });
     } catch (error) {
       console.error(
