@@ -9,6 +9,10 @@ const {
   getUtcDayRange,
 } = require('./utils/timezone');
 
+const {
+  getDailyScanUsage,
+} = require('./utils/scanQuota');
+
 const router = express.Router();
 
 const supabase = createClient(
@@ -27,6 +31,26 @@ router.post(
   scanLimiter,
   async (req, res) => {
     try {
+      const timezone =
+        getTimezone(req);
+
+      const quotaBeforeSave =
+        await getDailyScanUsage(
+          supabase,
+          req.user.id,
+          timezone
+        );
+
+      if (quotaBeforeSave.remaining <= 0) {
+        return res.status(429).json({
+          success: false,
+          code: 'DAILY_SCAN_LIMIT_REACHED',
+          error:
+            'You have used all 5 free scans for today. Your free scan allowance resets tomorrow.',
+          quota: quotaBeforeSave,
+        });
+      }
+
       const {
         food_name,
         calories,
@@ -141,10 +165,18 @@ router.post(
         });
       }
 
+      const quota =
+        await getDailyScanUsage(
+          supabase,
+          req.user.id,
+          timezone
+        );
+
       return res.status(201).json({
         success: true,
         message: 'Scan saved successfully',
         scan: data,
+        quota,
       });
     } catch (error) {
       console.error(
@@ -240,10 +272,18 @@ router.get(
           0
         );
 
+      const quota =
+        await getDailyScanUsage(
+          supabase,
+          req.user.id,
+          timezone
+        );
+
       return res.json({
         success: true,
         timezone,
         scans,
+        quota,
         totalCalories:
           Math.round(totalCalories),
       });
