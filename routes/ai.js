@@ -17,6 +17,43 @@ const USDA_API_KEY = process.env.USDA_API_KEY;
 // Maximum base64 image size
 const MAX_IMAGE_LENGTH = 8_000_000;
 
+function isValidNutrition(nutrition) {
+  if (!nutrition) {
+    return false;
+  }
+
+  const calories =
+    Number(nutrition.totalCalories);
+
+  if (
+    !Number.isFinite(calories) ||
+    calories <= 0 ||
+    calories > 10000
+  ) {
+    return false;
+  }
+
+  for (const field of [
+    'protein',
+    'carbs',
+    'fat',
+    'fiber',
+  ]) {
+    const value =
+      Number(nutrition[field]);
+
+    if (
+      !Number.isFinite(value) ||
+      value < 0 ||
+      value > 2000
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 // ─────────────────────────────────────────────
 // POST /api/ai/identify
 // ─────────────────────────────────────────────
@@ -187,29 +224,36 @@ router.post(
       }
 
       if (cached) {
-        await supabase
-          .from('food_cache')
-          .update({
-            hit_count:
-              (cached.hit_count || 0) + 1,
-          })
-          .eq('id', cached.id);
+        const cachedNutrition = {
+          foodName: cached.food_name,
+          totalCalories: cached.calories,
+          protein: cached.protein,
+          carbs: cached.carbs,
+          fat: cached.fat,
+          fiber: cached.fiber,
+          servingSize: cached.serving_size,
+        };
 
-        return res.json({
-          success: true,
+        if (isValidNutrition(cachedNutrition)) {
+          await supabase
+            .from('food_cache')
+            .update({
+              hit_count:
+                (cached.hit_count || 0) + 1,
+            })
+            .eq('id', cached.id);
 
-          source: 'cache',
+          return res.json({
+            success: true,
+            source: 'cache',
+            nutrition: cachedNutrition,
+          });
+        }
 
-          nutrition: {
-            foodName: cached.food_name,
-            totalCalories: cached.calories,
-            protein: cached.protein,
-            carbs: cached.carbs,
-            fat: cached.fat,
-            fiber: cached.fiber,
-            servingSize: cached.serving_size,
-          },
-        });
+        console.warn(
+          'Ignoring invalid cached nutrition for:',
+          normalizedName
+        );
       }
 
       let nutrition = null;
@@ -451,6 +495,33 @@ router.post(
           source: 'groq',
         };
       }
+
+      if (!isValidNutrition(nutrition)) {
+        console.error(
+          'Invalid nutrition values for:',
+          cleanFoodName
+        );
+
+        return res.status(502).json({
+          success: false,
+          error:
+            'Nutrition data could not be verified. Please try again.',
+        });
+      }
+
+      nutrition = {
+        ...nutrition,
+        totalCalories:
+          Math.round(Number(nutrition.totalCalories)),
+        protein:
+          Math.round(Number(nutrition.protein)),
+        carbs:
+          Math.round(Number(nutrition.carbs)),
+        fat:
+          Math.round(Number(nutrition.fat)),
+        fiber:
+          Math.round(Number(nutrition.fiber)),
+      };
 
       // ─────────────────────────────────
       // STEP 4: Cache result
