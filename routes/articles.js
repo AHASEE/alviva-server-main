@@ -332,7 +332,6 @@ async function fetchNews(
         (article) =>
           article?.title &&
           article?.url &&
-          article?.urlToImage &&
           article?.publishedAt &&
           new Date(article.publishedAt) >= cutoff &&
           !article.title.includes(
@@ -359,7 +358,8 @@ async function fetchNews(
             article.url,
 
           image:
-            article.urlToImage,
+            article.urlToImage ||
+            null,
 
           source:
             article.source?.name ||
