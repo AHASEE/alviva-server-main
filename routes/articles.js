@@ -259,13 +259,33 @@ function getRecentNewsCutoff() {
 
 async function fetchNews(
   query,
-  category = 'Health'
+  category = 'Health',
+  page = 1,
+  pageSize = 10
 ) {
   if (!NEWS_API_KEY) {
     throw new Error(
       'NEWS_API_KEY missing'
     );
   }
+
+  const safePage =
+    Math.min(
+      Math.max(
+        Number(page) || 1,
+        1
+      ),
+      20
+    );
+
+  const safePageSize =
+    Math.min(
+      Math.max(
+        Number(pageSize) || 10,
+        1
+      ),
+      20
+    );
 
   const cutoff =
     getRecentNewsCutoff();
@@ -281,7 +301,8 @@ async function fetchNews(
     '&language=en' +
     `&from=${fromDate}` +
     '&sortBy=publishedAt' +
-    '&pageSize=20';
+    `&pageSize=${safePageSize}` +
+    `&page=${safePage}`;
 
   const data = await httpsGet(
     url,
@@ -291,67 +312,85 @@ async function fetchNews(
     }
   );
 
+  const totalResults =
+    Math.max(
+      Number(data?.totalResults) || 0,
+      0
+    );
+
   if (!Array.isArray(data?.articles)) {
-    return [];
+    return {
+      items: [],
+      page: safePage,
+      hasMore: false,
+    };
   }
 
-  return data.articles
-    .filter(
-      (article) =>
-        article?.title &&
-        article?.url &&
-        article?.urlToImage &&
-        article?.publishedAt &&
-        new Date(article.publishedAt) >= cutoff &&
-        !article.title.includes(
-          '[Removed]'
-        )
-    )
-    .sort(
-      (a, b) =>
-        new Date(b.publishedAt).getTime() -
-        new Date(a.publishedAt).getTime()
-    )
-    .slice(0, 8)
-    .map(
-      (article, index) => ({
-        id: `news_${index}`,
+  const items =
+    data.articles
+      .filter(
+        (article) =>
+          article?.title &&
+          article?.url &&
+          article?.urlToImage &&
+          article?.publishedAt &&
+          new Date(article.publishedAt) >= cutoff &&
+          !article.title.includes(
+            '[Removed]'
+          )
+      )
+      .sort(
+        (a, b) =>
+          new Date(b.publishedAt).getTime() -
+          new Date(a.publishedAt).getTime()
+      )
+      .map(
+        (article) => ({
+          id: article.url,
 
-        title:
-          article.title,
+          title:
+            article.title,
 
-        description:
-          article.description ||
-          '',
+          description:
+            article.description ||
+            '',
 
-        url:
-          article.url,
+          url:
+            article.url,
 
-        image:
-          article.urlToImage,
+          image:
+            article.urlToImage,
 
-        source:
-          article.source?.name ||
-          'Health News',
+          source:
+            article.source?.name ||
+            'Health News',
 
-        publishedAt:
-          article.publishedAt,
+          publishedAt:
+            article.publishedAt,
 
-        category,
+          category,
 
-        readTime:
-          `${Math.max(
-            1,
-            Math.ceil(
-              (
-                article.content
-                  ?.length ||
-                500
-              ) / 1000
-            )
-          )} min`,
-      })
-    );
+          readTime:
+            `${Math.max(
+              1,
+              Math.ceil(
+                (
+                  article.content
+                    ?.length ||
+                  500
+                ) / 1000
+              )
+            )} min`,
+        })
+      );
+
+  return {
+    items,
+    page: safePage,
+    hasMore:
+      safePage * safePageSize <
+      totalResults,
+  };
 }
 
 // ─────────────────────────────────────
@@ -360,7 +399,8 @@ async function fetchNews(
 
 async function fetchVideos(
   query,
-  category = 'Health'
+  category = 'Health',
+  pageToken = ''
 ) {
   if (!YOUTUBE_API_KEY) {
     throw new Error(
@@ -368,14 +408,24 @@ async function fetchVideos(
     );
   }
 
+  const safePageToken =
+    typeof pageToken === 'string'
+      ? pageToken.trim().slice(0, 200)
+      : '';
+
   const url =
     'https://www.googleapis.com/youtube/v3/search' +
     '?part=snippet' +
     `&q=${encodeURIComponent(query)}` +
     '&type=video' +
-    '&maxResults=6' +
+    '&maxResults=8' +
     '&order=relevance' +
     '&safeSearch=strict' +
+    (
+      safePageToken
+        ? `&pageToken=${encodeURIComponent(safePageToken)}`
+        : ''
+    ) +
     `&key=${encodeURIComponent(
       YOUTUBE_API_KEY
     )}`;
@@ -384,49 +434,62 @@ async function fetchVideos(
     await httpsGet(url);
 
   if (!Array.isArray(data?.items)) {
-    return [];
+    return {
+      items: [],
+      nextPageToken: null,
+    };
   }
 
-  return data.items
-    .filter(
-      (item) =>
-        item?.id?.videoId &&
-        item?.snippet
-    )
-    .map((item) => ({
-      id:
-        item.id.videoId,
+  const items =
+    data.items
+      .filter(
+        (item) =>
+          item?.id?.videoId &&
+          item?.snippet
+      )
+      .map((item) => ({
+        id:
+          item.id.videoId,
 
-      videoId:
-        item.id.videoId,
+        videoId:
+          item.id.videoId,
 
-      title:
-        item.snippet.title,
+        title:
+          item.snippet.title,
 
-      channel:
-        item.snippet
-          .channelTitle,
+        channel:
+          item.snippet
+            .channelTitle,
 
-      thumb:
-        item.snippet
-          .thumbnails
-          ?.medium
-          ?.url ||
-        item.snippet
-          .thumbnails
-          ?.default
-          ?.url ||
-        null,
+        thumb:
+          item.snippet
+            .thumbnails
+            ?.medium
+            ?.url ||
+          item.snippet
+            .thumbnails
+            ?.default
+            ?.url ||
+          null,
 
-      url:
-        `https://www.youtube.com/watch?v=${item.id.videoId}`,
+        url:
+          `https://www.youtube.com/watch?v=${item.id.videoId}`,
 
-      category,
+        category,
 
-      publishedAt:
-        item.snippet
-          .publishedAt,
-    }));
+        publishedAt:
+          item.snippet
+            .publishedAt,
+      }));
+
+  return {
+    items,
+    nextPageToken:
+      typeof data?.nextPageToken ===
+      'string'
+        ? data.nextPageToken
+        : null,
+  };
 }
 
 // ─────────────────────────────────────
@@ -440,6 +503,28 @@ router.get(
   verifyToken,
   async (req, res) => {
     try {
+      const articlePage =
+        Math.min(
+          Math.max(
+            Number(req.query.articlePage) || 1,
+            1
+          ),
+          20
+        );
+
+      const videoPageToken =
+        typeof req.query.videoPageToken === 'string'
+          ? req.query.videoPageToken
+              .trim()
+              .slice(0, 200)
+          : '';
+
+      const content =
+        req.query.content === 'articles' ||
+        req.query.content === 'videos'
+          ? req.query.content
+          : 'all';
+
       const {
         data: profile,
         error: profileError,
@@ -482,34 +567,58 @@ router.get(
           bmi
         );
 
+      const wantsArticles =
+        content !== 'videos';
+
+      const wantsVideos =
+        content !== 'articles';
+
       const results =
         await Promise.allSettled([
-          fetchNews(
-            recommendation.query,
-            recommendation.category
-          ),
+          wantsArticles
+            ? fetchNews(
+                recommendation.query,
+                recommendation.category,
+                articlePage
+              )
+            : Promise.resolve({
+                items: [],
+                page: articlePage,
+                hasMore: false,
+              }),
 
-          fetchVideos(
-            recommendation.query,
-            recommendation.category
-          ),
+          wantsVideos
+            ? fetchVideos(
+                recommendation.query,
+                recommendation.category,
+                videoPageToken
+              )
+            : Promise.resolve({
+                items: [],
+                nextPageToken: null,
+              }),
         ]);
 
-      const articles =
-        results[0].status ===
-        'fulfilled'
+      const articleResult =
+        results[0].status === 'fulfilled'
           ? results[0].value
-          : [];
+          : {
+              items: [],
+              page: articlePage,
+              hasMore: false,
+            };
 
-      const videos =
-        results[1].status ===
-        'fulfilled'
+      const videoResult =
+        results[1].status === 'fulfilled'
           ? results[1].value
-          : [];
+          : {
+              items: [],
+              nextPageToken: null,
+            };
 
       if (
-        results[0].status ===
-        'rejected'
+        wantsArticles &&
+        results[0].status === 'rejected'
       ) {
         console.error(
           'Personalized news error:',
@@ -519,8 +628,8 @@ router.get(
       }
 
       if (
-        results[1].status ===
-        'rejected'
+        wantsVideos &&
+        results[1].status === 'rejected'
       ) {
         console.error(
           'Personalized video error:',
@@ -544,8 +653,29 @@ router.get(
             'Content selected from your current profile.',
         },
 
-        articles,
-        videos,
+        articles:
+          articleResult.items,
+
+        videos:
+          videoResult.items,
+
+        pagination: {
+          articles: {
+            page:
+              articleResult.page,
+            hasMore:
+              articleResult.hasMore,
+          },
+
+          videos: {
+            nextPageToken:
+              videoResult.nextPageToken,
+            hasMore:
+              Boolean(
+                videoResult.nextPageToken
+              ),
+          },
+        },
       });
     } catch (error) {
       console.error(
@@ -587,25 +717,49 @@ router.get(
               .slice(0, 100)
           : '';
 
+      const page =
+        Math.min(
+          Math.max(
+            Number(req.query.page) || 1,
+            1
+          ),
+          20
+        );
+
       const query =
         search ||
         CAT_QUERIES[category] ||
         CAT_QUERIES['For You'];
 
-      const articles =
+      const result =
         await fetchNews(
           query,
-          category || 'Health'
+          category || 'Health',
+          page
         );
+
+      const hasLiveArticles =
+        Array.isArray(result.items) &&
+        result.items.length > 0;
 
       return res.json({
         success: true,
         data:
-          Array.isArray(articles) && articles.length > 0
-            ? articles
-            : FALLBACK_ARTICLES,
+          hasLiveArticles
+            ? result.items
+            : page === 1
+              ? FALLBACK_ARTICLES
+              : [],
         fallback:
-          !Array.isArray(articles) || articles.length === 0,
+          !hasLiveArticles &&
+          page === 1,
+        pagination: {
+          page: result.page,
+          hasMore:
+            hasLiveArticles
+              ? result.hasMore
+              : false,
+        },
       });
     } catch (error) {
       console.error(
@@ -613,10 +767,23 @@ router.get(
         error.message
       );
 
+      const page =
+        Math.max(
+          Number(req.query.page) || 1,
+          1
+        );
+
       return res.json({
         success: true,
-        data: FALLBACK_ARTICLES,
-        fallback: true,
+        data:
+          page === 1
+            ? FALLBACK_ARTICLES
+            : [],
+        fallback: page === 1,
+        pagination: {
+          page,
+          hasMore: false,
+        },
         message:
           'Showing curated health articles while live news is unavailable',
       });
@@ -641,24 +808,51 @@ router.get(
               .slice(0, 50)
           : '';
 
+      const pageToken =
+        typeof req.query.pageToken ===
+        'string'
+          ? req.query.pageToken
+              .trim()
+              .slice(0, 200)
+          : '';
+
       const query =
         CAT_QUERIES[category] ||
         CAT_QUERIES['For You'];
 
-      const videos =
+      const result =
         await fetchVideos(
           query,
-          category || 'Health'
+          category || 'Health',
+          pageToken
         );
+
+      const hasLiveVideos =
+        Array.isArray(result.items) &&
+        result.items.length > 0;
 
       return res.json({
         success: true,
         data:
-          Array.isArray(videos) && videos.length > 0
-            ? videos
-            : FALLBACK_VIDEOS,
+          hasLiveVideos
+            ? result.items
+            : !pageToken
+              ? FALLBACK_VIDEOS
+              : [],
         fallback:
-          !Array.isArray(videos) || videos.length === 0,
+          !hasLiveVideos &&
+          !pageToken,
+        pagination: {
+          nextPageToken:
+            hasLiveVideos
+              ? result.nextPageToken
+              : null,
+          hasMore:
+            hasLiveVideos &&
+            Boolean(
+              result.nextPageToken
+            ),
+        },
       });
     } catch (error) {
       console.error(
@@ -666,10 +860,22 @@ router.get(
         error.message
       );
 
+      const hasToken =
+        typeof req.query.pageToken ===
+          'string' &&
+        req.query.pageToken.trim();
+
       return res.json({
         success: true,
-        data: FALLBACK_VIDEOS,
-        fallback: true,
+        data:
+          hasToken
+            ? []
+            : FALLBACK_VIDEOS,
+        fallback: !hasToken,
+        pagination: {
+          nextPageToken: null,
+          hasMore: false,
+        },
         message:
           'Showing curated videos while YouTube search is unavailable',
       });
