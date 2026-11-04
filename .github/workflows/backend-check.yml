@@ -1,0 +1,35 @@
+name: Alviva Backend Check
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "routes/**"
+      - "server.js"
+      - "index.js"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/backend-check.yml"
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check article route syntax
+        run: node --check routes/articles.js
