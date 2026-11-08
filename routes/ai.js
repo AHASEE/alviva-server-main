@@ -22,6 +22,24 @@ const USDA_API_KEY = process.env.USDA_API_KEY;
 // Maximum base64 image size
 const MAX_IMAGE_LENGTH = 8_000_000;
 
+function isPer100gServing(servingSize) {
+  if (typeof servingSize !== 'string') {
+    return false;
+  }
+
+  const normalized =
+    servingSize
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, '');
+
+  return [
+    '100g',
+    '100gram',
+    '100grams',
+  ].includes(normalized);
+}
+
 function isValidNutrition(nutrition) {
   if (!nutrition) {
     return false;
@@ -267,7 +285,12 @@ router.post(
           servingSize: cached.serving_size,
         };
 
-        if (isValidNutrition(cachedNutrition)) {
+        if (
+          isValidNutrition(cachedNutrition) &&
+          isPer100gServing(
+            cachedNutrition.servingSize
+          )
+        ) {
           await supabase
             .from('food_cache')
             .update({
@@ -279,12 +302,16 @@ router.post(
           return res.json({
             success: true,
             source: 'cache',
-            nutrition: cachedNutrition,
+            nutrition: {
+              ...cachedNutrition,
+              foodName: cleanFoodName,
+              servingSize: '100g',
+            },
           });
         }
 
         console.warn(
-          'Ignoring invalid cached nutrition for:',
+          'Ignoring non-100g or invalid cached nutrition for:',
           normalizedName
         );
       }
@@ -441,15 +468,17 @@ router.post(
                   role: 'user',
 
                   content:
-                    `Give estimated nutrition information for the food "${cleanFoodName}". ` +
-                    `Return ONLY valid JSON with this structure: ` +
+                    `Estimate nutrition for exactly 100 grams of the edible food "${cleanFoodName}". ` +
+                    `Every numeric nutrition value MUST be for exactly 100 grams, not per plate, serving, piece, cup, package, or recipe. ` +
+                    `Return ONLY valid JSON with this exact structure: ` +
                     `{"foodName":"${cleanFoodName}",` +
                     `"totalCalories":number,` +
                     `"protein":number,` +
                     `"carbs":number,` +
                     `"fat":number,` +
                     `"fiber":number,` +
-                    `"servingSize":"string"}.`,
+                    `"servingSize":"100g"}. ` +
+                    `The servingSize value MUST be exactly "100g".`,
                 },
               ],
 
@@ -523,13 +552,38 @@ router.post(
             typeof parsed.servingSize ===
             'string'
               ? parsed.servingSize.slice(0, 50)
-              : 'Standard serving',
+              : '',
 
           source: 'groq',
         };
+
+        if (
+          !isPer100gServing(
+            nutrition.servingSize
+          )
+        ) {
+          console.error(
+            'Groq nutrition was not returned per 100g for:',
+            cleanFoodName
+          );
+
+          return res.status(502).json({
+            success: false,
+            error:
+              'Nutrition data could not be normalized to 100g. Please try again.',
+          });
+        }
+
+        nutrition.servingSize =
+          '100g';
       }
 
-      if (!isValidNutrition(nutrition)) {
+      if (
+        !isValidNutrition(nutrition) ||
+        !isPer100gServing(
+          nutrition.servingSize
+        )
+      ) {
         console.error(
           'Invalid nutrition values for:',
           cleanFoodName
@@ -544,6 +598,7 @@ router.post(
 
       nutrition = {
         ...nutrition,
+        servingSize: '100g',
         totalCalories:
           Math.round(Number(nutrition.totalCalories)),
         protein:
