@@ -22,6 +22,62 @@ const USDA_API_KEY = process.env.USDA_API_KEY;
 // Maximum base64 image size
 const MAX_IMAGE_LENGTH = 8_000_000;
 
+const SUPPORTED_IMAGE_MIME_TYPES =
+  new Set([
+    'image/jpeg',
+    'image/png',
+  ]);
+
+function detectImageMimeType(
+  imageBase64,
+  requestedMimeType
+) {
+  if (
+    typeof imageBase64 === 'string'
+  ) {
+    if (
+      imageBase64.startsWith(
+        'iVBORw0KGgo'
+      )
+    ) {
+      return 'image/png';
+    }
+
+    if (
+      imageBase64.startsWith('/9j/')
+    ) {
+      return 'image/jpeg';
+    }
+  }
+
+  if (
+    typeof requestedMimeType ===
+    'string'
+  ) {
+    const normalized =
+      requestedMimeType
+        .trim()
+        .toLowerCase();
+
+    if (
+      normalized === 'image/jpg'
+    ) {
+      return 'image/jpeg';
+    }
+
+    if (
+      SUPPORTED_IMAGE_MIME_TYPES
+        .has(normalized)
+    ) {
+      return normalized;
+    }
+  }
+
+  // Backward compatibility for older app builds,
+  // which only sent JPEG camera images.
+  return 'image/jpeg';
+}
+
 function isPer100gServing(servingSize) {
   if (typeof servingSize !== 'string') {
     return false;
@@ -115,7 +171,10 @@ router.post(
         });
       }
 
-      const { imageBase64 } = req.body;
+      const {
+        imageBase64,
+        imageMimeType,
+      } = req.body;
 
       if (
         !imageBase64 ||
@@ -131,6 +190,23 @@ router.post(
         return res.status(413).json({
           success: false,
           error: 'Image is too large',
+        });
+      }
+
+      const detectedMimeType =
+        detectImageMimeType(
+          imageBase64,
+          imageMimeType
+        );
+
+      if (
+        !SUPPORTED_IMAGE_MIME_TYPES
+          .has(detectedMimeType)
+      ) {
+        return res.status(415).json({
+          success: false,
+          error:
+            'Unsupported image format. Please use JPEG or PNG.',
         });
       }
 
@@ -155,7 +231,8 @@ router.post(
                   {
                     type: 'image_url',
                     image_url: {
-                      url: `data:image/jpeg;base64,${imageBase64}`,
+                      url:
+                        `data:${detectedMimeType};base64,${imageBase64}`,
                     },
                   },
 
