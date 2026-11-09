@@ -33,3 +33,6 @@ jobs:
 
       - name: Check article route syntax
         run: node --check routes/articles.js
+
+      - name: Check AI route syntax
+        run: node --check routes/ai.js
